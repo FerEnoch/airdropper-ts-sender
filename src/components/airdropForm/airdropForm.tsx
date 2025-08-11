@@ -1,10 +1,11 @@
 "use client";
 import { chainsToTSender, erc20Abi, tsenderAbi } from "@/constants";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { InputField } from "@/components/ui/inputField";
 import { TxHashDisplay } from "@/components/ui/txHashDisplay";
 import { SubmitButton } from "@/components/ui/submitButton";
 import { TransactionDetails } from "@/components/ui/transactionDetails";
+import { ErrorDisplay } from "@/components/ui/errorDisplay";
 import {
 	useChainId,
 	useConfig,
@@ -43,7 +44,7 @@ export function AirdropForm() {
 		amountsInputValue: "",
 	});
 	const [submitting, setSubmitting] = useState(false);
-	// const [txHash, setTxHash] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
 	const [transactionData, setTransactionData] =
 		useState<TransactionData | null>(null);
 	const chainId = useChainId();
@@ -74,11 +75,29 @@ export function AirdropForm() {
 		return parseEther(String(calculateTotal(amountsInputValue)));
 	}, [amountsInputValue]);
 
+	// Handle wagmi transaction errors
+	useEffect(() => {
+		if (txError) {
+			console.error("Wagmi transaction error:", txError);
+			if (txError.message?.includes("User rejected")) {
+				setError("Transaction was rejected by user.");
+			} else if (txError.message?.includes("insufficient funds")) {
+				setError(
+					"Insufficient funds for gas fees. Please add more ETH to your wallet."
+				);
+			} else {
+				setError(`Transaction error: ${txError.message || "Unknown error"}`);
+			}
+		}
+	}, [txError]);
+
 	const update = (
 		key: keyof AirdropFormState,
 		value: AirdropFormState[typeof key]
 	) => {
 		setForm((f) => ({ ...f, [key]: value }));
+		// Clear errors when user starts typing
+		if (error) setError(null);
 	};
 
 	async function getApprovedAmount(
@@ -95,44 +114,98 @@ export function AirdropForm() {
 			})) as bigint;
 
 			return approvedAmount;
-		} catch (error: unknown) {
-			// TODO: handle error
+		} catch (error: any) {
 			console.error("Error getting approved amount:", error);
+			// Don't throw here, return null and handle in caller
 			return null;
 		}
 	}
 
 	async function onSubmit(e: React.FormEvent) {
 		e.preventDefault();
+		setError(null); // Clear previous errors
 
-		if (totalAmountInWei.toString() === "0") {
-			// TODO: Handle zero total amount (a.k.a. not-valid amount)
-			alert(
-				"Total amount is not valid. Review quantities and make sure none of them is zero or negative"
-			);
-			return;
-		}
-
-		setSubmitting(true);
-		// setTxHash(null);
-		setTransactionData(null);
+		// Validation checks
 		try {
-			console.log("Submitting...");
-
-			const tSenderAddress = chainsToTSender[chainId]?.tsender;
-			const approvedAmountInWei = await getApprovedAmount(tSenderAddress);
-
-			console.log({
-				approvedAmountInWei,
-			});
-
-			if (approvedAmountInWei === null) {
-				alert("Error fetching approved amount. Please try again.");
+			// Check if wallet is connected
+			if (!userAccount.address) {
+				setError("Please connect your wallet to continue.");
 				return;
 			}
 
+			// Check if chain is supported
+			const tSenderAddress = chainsToTSender[chainId]?.tsender;
+			if (!tSenderAddress) {
+				setError(
+					`TSender contract not available on this network (Chain ID: ${chainId}). Please switch to a supported network.`
+				);
+				return;
+			}
+
+			// Validate token address
+			if (
+				!tokenAddressInputValue ||
+				!tokenAddressInputValue.match(/^0x[a-fA-F0-9]{40}$/)
+			) {
+				setError(
+					"Please enter a valid token contract address (42 characters starting with 0x)."
+				);
+				return;
+			}
+
+			// Validate recipients
+			const recipients = splitRecipients(recipientsInputValue);
+			if (recipients.length === 0) {
+				setError(
+					"Please enter valid recipient addresses. Use comma-separated format for multiple recipients."
+				);
+				return;
+			}
+
+			// Validate amounts
+			const amounts = splitAmounts(amountsInputValue);
+			if (amounts.length === 0) {
+				setError(
+					"Please enter valid amounts. Use comma-separated format for multiple amounts."
+				);
+				return;
+			}
+
+			// Check if recipients and amounts match
+			if (recipients.length !== amounts.length && amounts.length !== 1) {
+				setError(
+					`Number of recipients (${recipients.length}) must match number of amounts (${amounts.length}), or provide a single amount for all recipients.`
+				);
+				return;
+			}
+
+			// Check for zero or negative amounts
+			if (totalAmountInWei.toString() === "0") {
+				setError(
+					"Total amount cannot be zero. Please check your amounts and ensure none are zero or negative."
+				);
+				return;
+			}
+
+			setSubmitting(true);
+			setTransactionData(null);
+
+			console.log("Submitting airdrop transaction...");
+
+			// Check token allowance
+			const approvedAmountInWei = await getApprovedAmount(tSenderAddress);
+
+			if (approvedAmountInWei === null) {
+				setError(
+					"Failed to check token allowance. Please ensure the token contract is valid and try again."
+				);
+				return;
+			}
+
+			// Handle token approval if needed
 			if (approvedAmountInWei < totalAmountInWei) {
 				try {
+					console.log("Requesting token approval...");
 					const approvalHash = await writeContractAsync({
 						abi: erc20Abi,
 						address: tokenAddressInputValue as `0x${string}`,
@@ -144,23 +217,50 @@ export function AirdropForm() {
 						hash: approvalHash,
 					});
 
-					console.log("Approval confirmed:", approvalReceipt);
-				} catch (error) {
+					if (approvalReceipt.status !== "success") {
+						setError("Token approval failed. Please try again.");
+						return;
+					}
+
+					console.log("Token approval confirmed:", approvalReceipt);
+				} catch (error: any) {
 					console.error("Error approving tokens:", error);
-					// TODO: handle error
+
+					if (error.cause?.reason === "insufficient funds") {
+						setError(
+							"Insufficient funds for gas fees. Please add more ETH to your wallet."
+						);
+					} else if (error.message?.includes("User rejected")) {
+						setError("Transaction was rejected by user.");
+					} else if (error.message?.includes("insufficient allowance")) {
+						setError(
+							"Insufficient token allowance. Please approve more tokens."
+						);
+					} else {
+						setError(
+							`Token approval failed: ${
+								error.shortMessage || error.message || "Unknown error"
+							}`
+						);
+					}
 					return;
 				}
 			}
 
+			// Execute the airdrop transaction
 			try {
+				console.log("Executing airdrop transaction...");
+				const recipients = splitRecipients(recipientsInputValue);
+				const amounts = splitAmounts(amountsInputValue);
+
 				const transferTxHash = await writeContractAsync({
 					abi: tsenderAbi,
 					address: tSenderAddress as `0x${string}`,
 					functionName: "airdropERC20",
 					args: [
 						tokenAddressInputValue,
-						splitRecipients(recipientsInputValue),
-						splitAmounts(amountsInputValue).map((v) => parseEther(v)),
+						recipients,
+						amounts.map((v) => parseEther(v)),
 						totalAmountInWei,
 					],
 				});
@@ -169,22 +269,24 @@ export function AirdropForm() {
 					hash: transferTxHash,
 				});
 
-				if (transferReceipt.status === "success") {
-					console.log("Transfer confirmed:", transferReceipt);
-				} else {
-					console.log("Transfer failed:", transferReceipt);
+				if (transferReceipt.status !== "success") {
+					setError(
+						"Airdrop transaction failed. Please check the transaction details and try again."
+					);
+					return;
 				}
 
+				console.log("Airdrop transaction confirmed:", transferReceipt);
+
+				// Check for token data errors (non-blocking)
 				if (tokenData.isError) {
-					throw new Error(
-						String(tokenData.failureReason) || "Failed to fetch token data"
+					console.warn(
+						"Failed to fetch token metadata:",
+						tokenData.failureReason
 					);
 				}
 
 				// Create transaction data with proper arrays for multiple recipients/amounts
-				const recipients = splitRecipients(recipientsInputValue);
-				const amounts = splitAmounts(amountsInputValue);
-
 				const txData: TransactionData = {
 					tokenAddress: tokenAddressInputValue,
 					recipient:
@@ -194,24 +296,50 @@ export function AirdropForm() {
 							? amounts.map((a) => parseEther(a).toString())
 							: parseEther(amounts[0] || "0").toString(),
 					amountTokens: amounts.length > 1 ? amounts : amounts[0],
-					tokenName: (tokenData.data?.[0]?.result as string) || "Unknown",
-					tokenSymbol: (tokenData.data?.[1]?.result as string) || "Unknown",
+					tokenName: (tokenData.data?.[0]?.result as string) || "Unknown Token",
+					tokenSymbol: (tokenData.data?.[1]?.result as string) || "UNK",
 				};
 
 				setTransactionData(txData);
-			} catch (error) {
-				console.error("Error transferring tokens:", error);
-				// TODO: handle error, specially when insufficient funds
-			}
 
-			// Clear form on success
-			// setForm({
-			// 	recipient: "",
-			// 	tokenAddress: "",
-			// 	amount: "",
-			// });
-		} catch (err) {
-			console.error(err);
+				// Clear form on success
+				setForm({
+					recipientsInputValue: "",
+					tokenAddressInputValue: "",
+					amountsInputValue: "",
+				});
+			} catch (error: any) {
+				console.error("Error executing airdrop:", error);
+
+				if (error.cause?.reason === "insufficient funds") {
+					setError(
+						"Insufficient funds for gas fees. Please add more ETH to your wallet."
+					);
+				} else if (error.message?.includes("User rejected")) {
+					setError("Transaction was rejected by user.");
+				} else if (error.message?.includes("insufficient balance")) {
+					setError(
+						"Insufficient token balance. Please ensure you have enough tokens for the airdrop."
+					);
+				} else if (
+					error.message?.includes("transfer amount exceeds allowance")
+				) {
+					setError(
+						"Transfer amount exceeds allowance. Please approve more tokens."
+					);
+				} else {
+					setError(
+						`Airdrop transaction failed: ${
+							error.shortMessage || error.message || "Unknown error"
+						}`
+					);
+				}
+			}
+		} catch (error: any) {
+			console.error("Unexpected error during submission:", error);
+			setError(
+				`An unexpected error occurred: ${error.message || "Please try again."}`
+			);
 		} finally {
 			setSubmitting(false);
 		}
@@ -224,6 +352,8 @@ export function AirdropForm() {
 			onSubmit={onSubmit}
 			className="w-full max-w-xl space-y-6 rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-6 backdrop-blur-md shadow-lg"
 		>
+			{error && <ErrorDisplay error={error} onDismiss={() => setError(null)} />}
+
 			<div className="space-y-4">
 				<InputField
 					label="Token Address"
