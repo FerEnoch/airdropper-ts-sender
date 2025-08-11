@@ -1,6 +1,7 @@
 # Token-sender airdropper
 
-This is a simple airdropper for sending ERC20 tokens to multiple recipients.
+This is a simple airdropper for sending ERC20 tokens to a single or multiple recipients.
+This project is part of the full-stack-web3 course of [Cyfrin Updraft](https://updraft.cyfrin.io/courses/full-stack-web3-development-crash-course) - [github repo](https://github.com/Cyfrin/ts-tsender-ui-cu) 
 
 ## Features
 
