@@ -26,9 +26,9 @@ interface AirdropFormState {
 
 interface TransactionData {
 	tokenAddress: string;
-	recipient: string;
-	amountWei: string;
-	amountTokens: string;
+	recipient: string | string[];
+	amountWei: string | string[];
+	amountTokens: string | string[];
 	tokenName: string;
 	tokenSymbol: string;
 }
@@ -181,12 +181,19 @@ export function AirdropForm() {
 					);
 				}
 
-				// TODO: split accordingly for every address
+				// Create transaction data with proper arrays for multiple recipients/amounts
+				const recipients = splitRecipients(recipientsInputValue);
+				const amounts = splitAmounts(amountsInputValue);
+
 				const txData: TransactionData = {
 					tokenAddress: tokenAddressInputValue,
-					recipient: (transferReceipt?.to as string) || "unknown",
-					amountWei: Number(parseEther(amountsInputValue)).toString(),
-					amountTokens: amountsInputValue,
+					recipient:
+						recipients.length > 1 ? recipients : recipients[0] || "unknown",
+					amountWei:
+						amounts.length > 1
+							? amounts.map((a) => parseEther(a).toString())
+							: parseEther(amounts[0] || "0").toString(),
+					amountTokens: amounts.length > 1 ? amounts : amounts[0],
 					tokenName: (tokenData.data?.[0]?.result as string) || "Unknown",
 					tokenSymbol: (tokenData.data?.[1]?.result as string) || "Unknown",
 				};
