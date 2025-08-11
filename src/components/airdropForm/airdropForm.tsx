@@ -122,10 +122,10 @@ export function AirdropForm() {
 			try {
 				const transferTxHash = await writeContractAsync({
 					abi: tsenderAbi,
-					address: tokenAddress as `0x${string}`,
+					address: tSenderAddress as `0x${string}`,
 					functionName: "airdropERC20",
 					args: [
-						tSenderAddress,
+						tokenAddress,
 						splitRecipients(recipients),
 						splitAmounts(amounts),
 						BigInt(totalAmount),
