@@ -5,17 +5,23 @@ import { InputField } from "@/components/ui/inputField";
 import { TxHashDisplay } from "@/components/ui/txHashDisplay";
 import { SubmitButton } from "@/components/ui/submitButton";
 import { TransactionDetails } from "@/components/ui/transactionDetails";
-import { useChainId, useConfig, useAccount, useWriteContract } from "wagmi";
+import {
+	useChainId,
+	useConfig,
+	useAccount,
+	useWriteContract,
+	useReadContracts,
+} from "wagmi";
 import { readContract, waitForTransactionReceipt } from "@wagmi/core";
-import { formatEther } from "viem";
+import { parseEther } from "viem";
 import { calculateTotal } from "@/utils/calculateTotal";
 import { splitRecipients } from "@/utils/splitRecipients";
 import { splitAmounts } from "@/utils/splitAmounts";
 
 interface AirdropFormState {
-	recipients: string;
-	tokenAddress: string;
-	amounts: string;
+	tokenAddressInputValue: string;
+	recipientsInputValue: string;
+	amountsInputValue: string;
 }
 
 interface TransactionData {
@@ -28,18 +34,34 @@ interface TransactionData {
 }
 
 export function AirdropForm() {
-	const [{ recipients, tokenAddress, amounts }, setForm] =
-		useState<AirdropFormState>({
-			recipients: "",
-			tokenAddress: "", // Mock-token address: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
-			amounts: "",
-		});
+	const [
+		{ tokenAddressInputValue, recipientsInputValue, amountsInputValue },
+		setForm,
+	] = useState<AirdropFormState>({
+		recipientsInputValue: "",
+		tokenAddressInputValue: "", // Mock-token address: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+		amountsInputValue: "",
+	});
 	const [submitting, setSubmitting] = useState(false);
 	// const [txHash, setTxHash] = useState<string | null>(null);
 	const [transactionData, setTransactionData] =
 		useState<TransactionData | null>(null);
 	const chainId = useChainId();
 	const config = useConfig();
+	const tokenData = useReadContracts({
+		contracts: [
+			{
+				abi: erc20Abi,
+				address: tokenAddressInputValue as `0x${string}`,
+				functionName: "name",
+			},
+			{
+				abi: erc20Abi,
+				address: tokenAddressInputValue as `0x${string}`,
+				functionName: "symbol",
+			},
+		],
+	});
 	const userAccount = useAccount();
 	const {
 		data: txHash,
@@ -48,41 +70,43 @@ export function AirdropForm() {
 		writeContractAsync,
 	} = useWriteContract();
 
-	const totalAmount = useMemo(() => {
-		return calculateTotal(amounts);
-	}, [amounts]);
+	const totalAmountInWei = useMemo(() => {
+		return parseEther(String(calculateTotal(amountsInputValue)));
+	}, [amountsInputValue]);
 
-	function update<K extends keyof AirdropFormState>(
-		key: K,
-		value: AirdropFormState[K]
-	) {
+	const update = (
+		key: keyof AirdropFormState,
+		value: AirdropFormState[typeof key]
+	) => {
 		setForm((f) => ({ ...f, [key]: value }));
-	}
+	};
 
-	async function getApprovedAmount(tSenderAddress: string): Promise<number> {
-		if (!tSenderAddress) return 0;
+	async function getApprovedAmount(
+		tSenderAddress: string
+	): Promise<bigint | null> {
+		if (!tSenderAddress) return null;
 
 		try {
 			const approvedAmount = (await readContract(config, {
 				abi: erc20Abi,
-				address: tokenAddress as `0x${string}`,
+				address: tokenAddressInputValue as `0x${string}`,
 				functionName: "allowance",
 				args: [userAccount.address, tSenderAddress],
 			})) as bigint;
 
-			return parseFloat(formatEther(approvedAmount));
+			return approvedAmount;
 		} catch (error: unknown) {
 			// TODO: handle error
 			console.error("Error getting approved amount:", error);
-			return 0;
+			return null;
 		}
 	}
 
 	async function onSubmit(e: React.FormEvent) {
 		e.preventDefault();
 
-		if (totalAmount === 0) {
-			// TODO: Handle zero total amount (aka not-valid amount)
+		if (totalAmountInWei.toString() === "0") {
+			// TODO: Handle zero total amount (a.k.a. not-valid amount)
 			alert(
 				"Total amount is not valid. Review quantities and make sure none of them is zero or negative"
 			);
@@ -98,13 +122,22 @@ export function AirdropForm() {
 			const tSenderAddress = chainsToTSender[chainId]?.tsender;
 			const approvedAmountInWei = await getApprovedAmount(tSenderAddress);
 
-			if (approvedAmountInWei * 1e18 < totalAmount) {
+			console.log({
+				approvedAmountInWei,
+			});
+
+			if (approvedAmountInWei === null) {
+				alert("Error fetching approved amount. Please try again.");
+				return;
+			}
+
+			if (approvedAmountInWei < totalAmountInWei) {
 				try {
 					const approvalHash = await writeContractAsync({
 						abi: erc20Abi,
-						address: tokenAddress as `0x${string}`,
+						address: tokenAddressInputValue as `0x${string}`,
 						functionName: "approve",
-						args: [tSenderAddress, BigInt(totalAmount)],
+						args: [tSenderAddress, BigInt(totalAmountInWei)],
 					});
 
 					const approvalReceipt = await waitForTransactionReceipt(config, {
@@ -125,10 +158,10 @@ export function AirdropForm() {
 					address: tSenderAddress as `0x${string}`,
 					functionName: "airdropERC20",
 					args: [
-						tokenAddress,
-						splitRecipients(recipients),
-						splitAmounts(amounts),
-						BigInt(totalAmount),
+						tokenAddressInputValue,
+						splitRecipients(recipientsInputValue),
+						splitAmounts(amountsInputValue).map((v) => parseEther(v)),
+						totalAmountInWei,
 					],
 				});
 
@@ -136,19 +169,28 @@ export function AirdropForm() {
 					hash: transferTxHash,
 				});
 
-				console.log("Transfer confirmed:", transferReceipt);
+				if (transferReceipt.status === "success") {
+					console.log("Transfer confirmed:", transferReceipt);
+				} else {
+					console.log("Transfer failed:", transferReceipt);
+				}
+
+				if (tokenData.isError) {
+					throw new Error(
+						String(tokenData.failureReason) || "Failed to fetch token data"
+					);
+				}
 
 				// TODO: split accordingly for every address
 				const txData: TransactionData = {
-					tokenAddress,
-					recipient: recipients,
-					amountWei: amounts,
-					amountTokens: (parseFloat(amounts) / 1e18).toFixed(6), // Convert wei to tokens (assuming 18 decimals)
-					tokenName: "Sample Token", // This would come from contract call
-					tokenSymbol: "SMPL", // This would come from contract call
+					tokenAddress: tokenAddressInputValue,
+					recipient: (transferReceipt?.to as string) || "unknown",
+					amountWei: Number(parseEther(amountsInputValue)).toString(),
+					amountTokens: amountsInputValue,
+					tokenName: (tokenData.data?.[0]?.result as string) || "Unknown",
+					tokenSymbol: (tokenData.data?.[1]?.result as string) || "Unknown",
 				};
 
-				// setTxHash(transferReceipt.transactionHash);
 				setTransactionData(txData);
 			} catch (error) {
 				console.error("Error transferring tokens:", error);
@@ -168,7 +210,7 @@ export function AirdropForm() {
 		}
 	}
 
-	const isValid = recipients && amounts;
+	const isValid = recipientsInputValue && amountsInputValue;
 
 	return (
 		<form
@@ -180,8 +222,8 @@ export function AirdropForm() {
 					label="Token Address"
 					name="tokenAddress"
 					placeholder="0x..."
-					value={tokenAddress}
-					onChange={(v) => update("tokenAddress", v)}
+					value={tokenAddressInputValue}
+					onChange={(v) => update("tokenAddressInputValue", v)}
 					onChain
 					required
 					className=""
@@ -190,19 +232,19 @@ export function AirdropForm() {
 					label="Recipient Address (optional CSV addresses)"
 					name="recipient"
 					placeholder="0x..."
-					value={recipients}
-					onChange={(v) => update("recipients", v)}
+					value={recipientsInputValue}
+					onChange={(v) => update("recipientsInputValue", v)}
 					onChain
 					required
 					className=""
 				/>
 				<InputField
-					label="Amount (wei; optional CSV amounts)"
+					label="Amount (tokens; optional CSV amounts)"
 					name="amount"
 					type="text"
 					placeholder="e.g. 10"
-					value={amounts}
-					onChange={(v) => update("amounts", v)}
+					value={amountsInputValue}
+					onChange={(v) => update("amountsInputValue", v)}
 					required
 					onChain
 				/>
