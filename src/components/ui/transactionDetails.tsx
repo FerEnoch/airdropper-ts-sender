@@ -59,7 +59,7 @@ export function TransactionDetails({
 				</div>
 
 				{/* Recipients section */}
-				<div>
+				<div className={isMultiple ? "" : "flex justify-between"}>
 					<span className="text-zinc-400">
 						{isMultiple ? "Recipients:" : "Recipient:"}
 					</span>
