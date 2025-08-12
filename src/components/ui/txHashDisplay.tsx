@@ -1,19 +1,13 @@
 import { CopyButton } from "./copyButton";
 import { ExternalLinkButton } from "./externalLinkButton";
+import { type TxHashDisplayProps } from "@/types";
+import { defaultBlockExplorerUrl } from "@/utils/blockExplorer";
 
-interface TxHashDisplayProps {
-	txHash: `0x${string}` | undefined;
-	getBlockExplorerUrl?: (hash: string) => string;
-	className?: string;
-}
-
-function defaultBlockExplorerUrl(hash: string): string {
-	return `https://sepolia.etherscan.io/tx/${hash}`;
-}
+export type { TxHashDisplayProps } from "@/types";
 
 export function TxHashDisplay({
 	txHash,
-	getBlockExplorerUrl = defaultBlockExplorerUrl,
+	blockExplorerUrl,
 	className = "",
 }: TxHashDisplayProps) {
 	if (!txHash) {
@@ -36,7 +30,7 @@ export function TxHashDisplay({
 			</span>
 			<CopyButton textToCopy={txHash} />
 			<ExternalLinkButton
-				href={getBlockExplorerUrl(txHash)}
+				href={blockExplorerUrl || defaultBlockExplorerUrl(txHash)}
 				title="View on block explorer"
 			/>
 		</div>

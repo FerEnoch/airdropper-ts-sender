@@ -1,4 +1,6 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { chainsToTSender, erc20Abi, tsenderAbi } from "@/constants";
 import { useMemo, useState, useEffect } from "react";
 import { InputField } from "@/components/ui/inputField";
@@ -6,6 +8,7 @@ import { TxHashDisplay } from "@/components/ui/txHashDisplay";
 import { SubmitButton } from "@/components/ui/submitButton";
 import { TransactionDetails } from "@/components/ui/transactionDetails";
 import { ErrorDisplay } from "@/components/ui/errorDisplay";
+import { type AirdropFormState, type TransactionData } from "@/types";
 import {
 	useChainId,
 	useConfig,
@@ -18,21 +21,11 @@ import { parseEther } from "viem";
 import { calculateTotal } from "@/utils/calculateTotal";
 import { splitRecipients } from "@/utils/splitRecipients";
 import { splitAmounts } from "@/utils/splitAmounts";
-
-interface AirdropFormState {
-	tokenAddressInputValue: string;
-	recipientsInputValue: string;
-	amountsInputValue: string;
-}
-
-interface TransactionData {
-	tokenAddress: string;
-	recipient: string | string[];
-	amountWei: string | string[];
-	amountTokens: string | string[];
-	tokenName: string;
-	tokenSymbol: string;
-}
+import {
+	isValidEthereumAddress,
+	areRecipientsAndAmountsCompatible,
+	isValidTotalAmount,
+} from "@/utils/validation";
 
 export function AirdropForm() {
 	const [
@@ -145,7 +138,7 @@ export function AirdropForm() {
 			// Validate token address
 			if (
 				!tokenAddressInputValue ||
-				!tokenAddressInputValue.match(/^0x[a-fA-F0-9]{40}$/)
+				!isValidEthereumAddress(tokenAddressInputValue)
 			) {
 				setError(
 					"Please enter a valid token contract address (42 characters starting with 0x)."
@@ -172,7 +165,9 @@ export function AirdropForm() {
 			}
 
 			// Check if recipients and amounts match
-			if (recipients.length !== amounts.length && amounts.length !== 1) {
+			if (
+				!areRecipientsAndAmountsCompatible(recipients.length, amounts.length)
+			) {
 				setError(
 					`Number of recipients (${recipients.length}) must match number of amounts (${amounts.length}), or provide a single amount for all recipients.`
 				);
@@ -180,7 +175,7 @@ export function AirdropForm() {
 			}
 
 			// Check for zero or negative amounts
-			if (totalAmountInWei.toString() === "0") {
+			if (!isValidTotalAmount(totalAmountInWei)) {
 				setError(
 					"Total amount cannot be zero. Please check your amounts and ensure none are zero or negative."
 				);

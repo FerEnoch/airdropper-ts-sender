@@ -1,20 +1,9 @@
 "use client";
 
-import { memo } from "react";
+import { type InputFieldProps } from "@/types";
+import { generateIdFromLabel } from "@/utils/domHelpers";
 
-export interface InputFieldProps {
-	label: string;
-	placeholder?: string;
-	type?: React.HTMLInputTypeAttribute;
-	value: string;
-	large?: boolean; // if true render textarea
-	onChain?: boolean; // display on-chain badge
-	onChange: (value: string) => void; // parent state handler
-	name?: string; // optional name/id hook up
-	disabled?: boolean;
-	required?: boolean;
-	className?: string;
-}
+export type { InputFieldProps } from "@/types";
 
 export function InputField({
 	label,
@@ -29,7 +18,7 @@ export function InputField({
 	required,
 	className = "",
 }: InputFieldProps) {
-	const id = name || label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+	const id = name || generateIdFromLabel(label);
 
 	const baseStyles =
 		"w-full rounded-md border border-zinc-300 bg-white/5 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition";

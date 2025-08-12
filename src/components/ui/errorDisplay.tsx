@@ -1,7 +1,6 @@
-interface ErrorDisplayProps {
-	error: string | null;
-	onDismiss: () => void;
-}
+import { type ErrorDisplayProps } from "@/types";
+
+export type { ErrorDisplayProps } from "@/types";
 
 export function ErrorDisplay({ error, onDismiss }: ErrorDisplayProps) {
 	if (!error) return null;

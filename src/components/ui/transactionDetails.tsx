@@ -1,12 +1,11 @@
-interface TransactionDetailsProps {
-	tokenAddress: string;
-	recipient: string | string[];
-	amountWei: string | string[];
-	amountTokens?: string | string[];
-	tokenName?: string;
-	tokenSymbol?: string;
-	className?: string;
-}
+import { type TransactionDetailsProps } from "@/types";
+import {
+	normalizeRecipients,
+	normalizeAmounts,
+	calculateTotalFromAmounts,
+} from "@/utils/arrayHelpers";
+
+export type { TransactionDetailsProps } from "@/types";
 
 export function TransactionDetails({
 	tokenAddress,
@@ -18,23 +17,13 @@ export function TransactionDetails({
 	className = "",
 }: TransactionDetailsProps) {
 	// Convert to arrays for consistent handling
-	const recipients = Array.isArray(recipient) ? recipient : [recipient];
-	const amountsWei = Array.isArray(amountWei) ? amountWei : [amountWei];
-	const amountsTokens = Array.isArray(amountTokens)
-		? amountTokens
-		: amountTokens
-		? [amountTokens]
-		: [];
+	const recipients = normalizeRecipients(recipient);
+	const amountsWei = normalizeAmounts(amountWei);
+	const amountsTokens = amountTokens ? normalizeAmounts(amountTokens) : [];
 
 	// Calculate total if multiple amounts
-	const totalWei = amountsWei.reduce(
-		(sum, amount) => sum + parseFloat(amount),
-		0
-	);
-	const totalTokens = amountsTokens.reduce(
-		(sum, amount) => sum + parseFloat(amount),
-		0
-	);
+	const totalWei = calculateTotalFromAmounts(amountsWei);
+	const totalTokens = calculateTotalFromAmounts(amountsTokens);
 	const isMultiple = recipients.length > 1;
 
 	return (
