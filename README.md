@@ -47,16 +47,44 @@ pnpm dev
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 # Tests
+For unit testing, simply run:
 
 ```bash
-pnpm test:unit # unit tests
-pnpm test:e2e # broken e2e tests
+pnpm test:unit
 ```
+
+For e2e testing, note that you've to make sure your anvil instance is up and running!
+
+The e2e setup with "xvfb-run" is usable with WSL. Not sure if it works on other environments.
+
+Please, for troubleshooting see the [course repo](https://github.com/Cyfrin/ts-tsender-ui-cu) or [official Synpress documentation](https://docs.synpress.io/docs/known-issues).
+
+```bash
+pnpm test:e2e
+```
+
+This will throw an error like:
+
+```
+Error: Cache for 08a20e3c7fc77e6ae298 does not exist. Create it first!
+```
+
+The `08a20e3c7fc77e6ae298` is your `CACHE_NAME`
+
+In your `.cache-synpress` folder, rename the folder that isn't `metamask-chrome-***` to your `CACHE_NAME`.
+
+Then, you should be able to run:
+
+```
+pnpm test:e2e
+```
+
+And it'll work!
 
 # Anvil Setup
 
 ```bash
-pnpm run anvil # This will start a locally running anvil server, with TSender deployed
+pnpm start-anvil # This will start a locally running anvil server, with TSender deployed
 ```
 
 ## tsender-deployed.json
