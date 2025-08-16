@@ -9,7 +9,6 @@ const test = testWithSynpress(metaMaskFixtures(basicSetup));
 // extract expect function from "test"
 const { expect } = test;
 
-// Define a basic test case
 test("Should connect wallet to Metamask Test Dapp", async ({
 	context,
 	page,
