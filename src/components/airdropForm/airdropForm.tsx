@@ -346,6 +346,7 @@ export function AirdropForm() {
 		<form
 			onSubmit={onSubmit}
 			className="w-full max-w-xl space-y-6 rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-6 backdrop-blur-md shadow-lg"
+			data-testid="airdrop-form"
 		>
 			{error && <ErrorDisplay error={error} onDismiss={() => setError(null)} />}
 
