@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "start": "next start",
+    "start": "pnpx serve@latest out",
     "lint": "next lint",
     "test:unit": "vitest",
     "test:unit:ui": "vitest --ui",
